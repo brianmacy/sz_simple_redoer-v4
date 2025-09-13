@@ -37,8 +37,35 @@ docker build -t brian/sz_simple_redoer .
 docker run --user $UID -it -e SENZING_ENGINE_CONFIGURATION_JSON brian/sz_simple_redoer
 ```
 
+## 🔍 Troubleshooting
+
+### Common Issues
+- **"No module named 'senzing'"**: Set `PYTHONPATH=/opt/senzing/er/sdk/python`
+- **"No redo records available"**: This is normal - the processor waits for work
+- **High memory usage**: Reduce `SENZING_THREADS_PER_PROCESS`
+- **Configuration errors**: Check your `SENZING_ENGINE_CONFIGURATION_JSON` format
+
+### Getting Started
+1. Copy `.env.example` to `.env` and modify the values
+2. Ensure Senzing SDK is installed and accessible
+3. Run with: `python3 sz_simple_redoer.py`
+
+## 📚 Educational Features
+
+### What This Code Demonstrates
+- **ThreadPoolExecutor**: Parallel processing with Python's built-in threading
+- **Graceful Shutdown**: Proper signal handling for CTRL+C and container stops
+- **Error Handling**: Robust exception handling with educational context
+- **Configuration**: Environment-based configuration with validation
+- **Monitoring**: Real-time statistics and long-running record detection
+
+### Command Line Options
+- `-i, --info`: Enable WithInfo output (shows additional processing data)
+- `-t, --debugTrace`: Enable debug tracing (verbose Senzing SDK logs)
+
 ## Additional items to note
- * Will exit on non-data related exceptions after processing or failing to process the current records in flight
- * If a record takes more than 5min to process (LONG_RECORD), it will let you know which record it is and how long it has been processing
- * Does not use the senzing-###### format for log messages (unlike the senzing/redoer) and simply uses python `print` with strings.  It does use the standard senzing governor-postgresql-transaction-id module so you will see some messages using the standard format.
- * Does not support "WithInfo" output to queues but you can provide a "-i" command line option that will enable printing the WithInfo responses out.  It is simple enough to code in whatever you want done with WithInfo messages in your solution.
+ * Will exit gracefully on CTRL+C or SIGTERM after processing current records in flight
+ * If a record takes more than 5min to process (LONG_RECORD), it will alert you with timing information
+ * Uses simple `print()` statements with emojis for clear, educational logging
+ * Supports "WithInfo" output via the `-i` command line option for educational purposes
+ * Code is PEP8 compliant and heavily commented for learning
