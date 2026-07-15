@@ -33,11 +33,14 @@ ARG WITH_MSSQL=1
 # into /opt/senzing/er/lib; the base senzingsdk-runtime omits them (without it: SENZ0087). It is
 # backend-independent, so it is always installed.
 # MSSQL path: msodbcsql18 (ODBC Driver 18) via packages-microsoft-prod.deb (registers the MS apt
-# repo + key for Debian 12) + an /etc/odbc.ini [MSSQL] DSN with AutoTranslate=No (prevents UTF-8
+# repo + key for Debian 13 / trixie) + an /etc/odbc.ini [MSSQL] DSN with AutoTranslate=No (prevents UTF-8
 # corruption; Server/Database/port come from the engine connection string, setupenv.sh). Debian's
 # own unixODBC is built WITH --enable-fastvalidate, so we keep it; do NOT substitute Microsoft's
 # Ubuntu unixODBC build (~10x slower). The FAQ's 2.3.6-0.1build1 pins are Ubuntu version strings
-# and do not exist on debian:12 (the senzingsdk-runtime base).
+# and do not exist on the Debian 13 (trixie) senzingsdk-runtime base.
+# NOTE: use the debian/13 MS repo, not debian/12 — trixie's apt (Sequoia/sqv) rejects the
+# older repo key's SHA-1 self-signature ("repository is not signed"); the debian/13 repo
+# ships a trixie-compatible key.
 RUN apt-get update \
  && apt-get -y install --no-install-recommends \
       ca-certificates curl gnupg apt-transport-https \
@@ -48,7 +51,7 @@ RUN apt-get update \
         echo "ERROR: enable at least one of WITH_POSTGRES / WITH_MSSQL" >&2; exit 1; fi \
  && if [ "$WITH_POSTGRES" != 1 ]; then apt-get -y purge libpq5; fi \
  && if [ "$WITH_MSSQL" = 1 ]; then \
-        curl -sSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+        curl -sSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb \
      && dpkg -i /tmp/packages-microsoft-prod.deb \
      && rm -f /tmp/packages-microsoft-prod.deb \
      && apt-get update \
