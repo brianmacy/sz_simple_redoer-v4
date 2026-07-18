@@ -3,7 +3,7 @@
 # docker run --user $UID -it -e SENZING_ENGINE_CONFIGURATION_JSON brian/sz_simple_redoer
 
 # Educational: Use specific base image for reproducibility
-ARG BASE_IMAGE="senzing/senzingsdk-runtime:4.3.2"
+ARG BASE_IMAGE="senzing/senzingsdk-runtime:4.3.3"
 FROM ${BASE_IMAGE}
 ARG BASE_IMAGE
 RUN echo "Building from base image: $BASE_IMAGE"
