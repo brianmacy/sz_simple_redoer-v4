@@ -12,9 +12,6 @@ import traceback
 
 from senzing import (
     SzBadInputError,
-    SzConfig,
-    SzConfigManager,
-    SzEngine,
     SzEngineFlags,
     SzRetryTimeoutExceededError,
 )
@@ -199,7 +196,7 @@ try:
                                 print(
                                     result
                                 )  # would handle pushing to withinfo queues here
-                        except (SzRetryTimeoutExceededError, SzBadInputError) as err:
+                        except (SzRetryTimeoutExceededError, SzBadInputError):
                             record = orjson.loads(msg[TUPLE_MSG])
                             print(
                                 f'⚠️ FAILED due to bad data or timeout: '
