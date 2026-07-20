@@ -29,9 +29,15 @@ USER root
 ARG WITH_POSTGRES=1
 ARG WITH_MSSQL=1
 
-# senzingsdk-setup installs the feature expression-creator libs (e.g. libg2CreditCardECreator.so)
-# into /opt/senzing/er/lib; the base senzingsdk-runtime omits them (without it: SENZ0087). It is
-# backend-independent, so it is always installed.
+# The base senzingsdk-runtime image already ships everything needed to process redo: libSz.so, all
+# backend plugins (postgresql/mssql/oracle/mysql/sqlite/aurora), and the resources/templates +
+# support data under /opt/senzing. So the only build-time additions are python3 + orjson to run
+# this script and, for MSSQL, the Microsoft ODBC driver.
+#
+# Do NOT add senzingsdk-setup here. An earlier version did, to "fix" a SENZ0087 at redo time, but
+# that was a misdiagnosis: the real cause was a 4.4 engine config run against a 4.3 runtime image,
+# whose config referenced feature plugins absent in 4.3. Keep the engine config and runtime image
+# on the same Senzing version; there are no separate feature-creator .so files to install in v4.
 # MSSQL path: msodbcsql18 (ODBC Driver 18) via packages-microsoft-prod.deb (registers the MS apt
 # repo + key for Debian 13 / trixie) + an /etc/odbc.ini [MSSQL] DSN with AutoTranslate=No (prevents UTF-8
 # corruption; Server/Database/port come from the engine connection string, setupenv.sh). Debian's
@@ -45,7 +51,6 @@ RUN apt-get update \
  && apt-get -y install --no-install-recommends \
       ca-certificates curl gnupg apt-transport-https \
       python3 python3-pip \
-      senzingsdk-setup \
  && python3 -mpip install --break-system-packages orjson \
  && if [ "$WITH_POSTGRES" != 1 ] && [ "$WITH_MSSQL" != 1 ]; then \
         echo "ERROR: enable at least one of WITH_POSTGRES / WITH_MSSQL" >&2; exit 1; fi \
