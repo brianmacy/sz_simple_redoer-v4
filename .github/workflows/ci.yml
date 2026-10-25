@@ -19,12 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-      - name: Install lint tools
-        run: pip install ruff
+      - name: Install lint and test tools
+        run: pip install ruff==0.17.2 pytest orjson senzing
       - name: Ruff lint
         run: ruff check .
       - name: Compile check (syntax)
         run: python -m compileall -q .
+      - name: Unit tests
+        run: python -m pytest -v

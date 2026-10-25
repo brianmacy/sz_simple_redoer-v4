@@ -3,20 +3,17 @@
 import argparse
 import concurrent.futures
 import logging
-import orjson
 import os
 import signal
 import sys
 import time
-import traceback
 
+import orjson
 from senzing import (
     SzBadInputError,
     SzEngineFlags,
     SzRetryTimeoutExceededError,
 )
-
-import senzing_core
 
 # Educational constants with explanations
 STATS_INTERVAL = 1000  # Report progress every N messages
@@ -34,6 +31,7 @@ PARAM = "PARAM"
 VALUE = "VALUE"
 
 log_format = "%(asctime)s %(message)s"
+logger = logging.getLogger("sz_simple_redoer")
 
 # Global shutdown flag for graceful termination
 shutdown_requested = False
@@ -76,7 +74,9 @@ def print_simple_stats(messages, start_time, active_threads, max_threads):
 
 
 def logging_id(rec):
-    """Generate a logging ID for the record."""
+    """Generate a logging ID for the record. Never raises."""
+    if not isinstance(rec, dict):
+        return "UNKNOWN RECORD"
     dsrc = rec.get("DATA_SOURCE")
     rec_id = rec.get("RECORD_ID")
     if dsrc and rec_id:
@@ -88,6 +88,25 @@ def logging_id(rec):
         except (KeyError, IndexError, TypeError):
             return 'UMF_PROC : REPAIR_ENTITY'
     return "UNKNOWN RECORD"
+
+
+def msg_logging_id(raw_msg):
+    """Logging ID for a raw redo message (JSON string). Never raises.
+
+    Redo records are either DSRC records (DATA_SOURCE/RECORD_ID) or UMF_PROC
+    repair messages (REPAIR_ENTITY), so this must not assume either shape:
+    one bad record must not take down the process (#15).
+    """
+    try:
+        return logging_id(orjson.loads(raw_msg))
+    except orjson.JSONDecodeError:
+        return "UNKNOWN RECORD"
+
+
+def failure_message(raw_msg):
+    """Describe a redo record that failed with bad input or a retry timeout."""
+    return f'⚠️ FAILED due to bad data or timeout: {msg_logging_id(raw_msg)}'
+
 
 def process_msg(engine, msg, info):
     """Process a redo message using the Senzing engine."""
@@ -105,7 +124,23 @@ def process_msg(engine, msg, info):
         raise
 
 
-try:
+def main():
+    """Initialize Senzing and process redo records until shutdown."""
+    try:
+        factory, g2, args, max_workers = startup()
+    except Exception as err:
+        print(f"⚠️ Fatal error during startup: {err}", file=sys.stderr)
+        raise
+    process_redo(g2, args, max_workers)
+    del factory  # Educational: keep the factory alive until processing ends
+
+
+def startup():
+    """Set up signals, logging, arguments and the Senzing engine."""
+    # Educational: senzing_core loads the native Senzing library on import,
+    # so import it only when actually starting the engine.
+    import senzing_core
+
     # Educational: Setup signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)   # CTRL+C
     signal.signal(signal.SIGTERM, signal_handler)  # Container stop
@@ -149,7 +184,7 @@ try:
 
     # Educational: Validate configuration before proceeding
     if not validate_config():
-        exit(1)
+        sys.exit(1)
 
     # Educational: Initialize Senzing SDK
     engine_config = os.getenv("SENZING_ENGINE_CONFIGURATION_JSON")
@@ -157,14 +192,18 @@ try:
         "sz_simple_redoer", engine_config, verbose_logging=args.debugTrace
     )
     g2 = factory.create_engine()
-    start_time = log_check_time = prev_time = time.time()
 
     # Educational: Configure thread pool size
     max_workers = int(os.getenv("SENZING_THREADS_PER_PROCESS", "0"))
     if not max_workers:  # Let Python choose optimal thread count
         max_workers = None
     print(f"🔧 Thread pool configured: {max_workers or 'auto-detected'} workers")
+    return factory, g2, args, max_workers
 
+
+def process_redo(g2, args, max_workers):
+    """Main processing loop: pull redo records and process them in parallel."""
+    start_time = log_check_time = time.time()
     messages = 0
 
     # Educational: ThreadPoolExecutor automatically manages worker threads
@@ -197,20 +236,14 @@ try:
                                     result
                                 )  # would handle pushing to withinfo queues here
                         except (SzRetryTimeoutExceededError, SzBadInputError):
-                            record = orjson.loads(msg[TUPLE_MSG])
-                            print(
-                                f'⚠️ FAILED due to bad data or timeout: '
-                                f'{record["DATA_SOURCE"]} : {record["RECORD_ID"]}'
-                            )
+                            print(failure_message(msg[TUPLE_MSG]))
 
                         messages += 1
 
                         # Educational: Display progress statistics
                         if messages % STATS_INTERVAL == 0:
-                            diff = now_time - prev_time
                             active_threads = sum(1 for f in futures if not f.done())
                             print_simple_stats(messages, start_time, active_threads, executor._max_workers)
-                            prev_time = now_time
 
                     # Educational: Monitor for long-running records
                     if now_time > log_check_time + (LONG_RECORD / 2):
@@ -226,9 +259,9 @@ try:
                                 duration = now_time - msg[TUPLE_STARTTIME]
                                 if duration > LONG_RECORD * 2:
                                     num_stuck += 1
-                                    record = orjson.loads(msg[TUPLE_MSG])
                                     print(
-                                        f'⏱️ Long record ({duration/60:.1f} min): {logging_id(record)}'
+                                        f'⏱️ Long record ({duration/60:.1f} min): '
+                                        f'{msg_logging_id(msg[TUPLE_MSG])}'
                                     )
                         if num_stuck >= executor._max_workers:
                             print(
@@ -280,21 +313,20 @@ try:
                 file=sys.stderr,
             )
             print(f"📏 Processed {messages} records before failure")
-            traceback.print_exc()
+            logger.exception("Redo processing failed")
 
             # Educational: Show what work is still in progress during shutdown
             now_time = time.time()
             for fut, msg in futures.items():
                 if not fut.done():
                     duration = now_time - msg[TUPLE_STARTTIME]
-                    record = orjson.loads(msg[TUPLE_MSG])
                     print(
-                        f'⏱️ Still processing ({duration/60:.1f} min): {logging_id(record)}'
+                        f'⏱️ Still processing ({duration/60:.1f} min): '
+                        f'{msg_logging_id(msg[TUPLE_MSG])}'
                     )
             executor.shutdown(wait=True)  # Educational: Wait for threads to complete
-            exit(1)
+            sys.exit(1)
 
-except Exception as err:
-    print(f"⚠️ Fatal error during startup: {err}", file=sys.stderr)
-    traceback.print_exc()
-    exit(1)
+
+if __name__ == "__main__":
+    main()

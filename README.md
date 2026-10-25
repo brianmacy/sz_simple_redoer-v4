@@ -37,6 +37,13 @@ docker build -t brian/sz_simple_redoer .
 docker run --user $UID -it -e SENZING_ENGINE_CONFIGURATION_JSON brian/sz_simple_redoer
 ```
 
+## Testing
+```
+pip install pytest orjson senzing
+python -m pytest
+```
+The unit tests do not need the Senzing native library: `senzing_core` is imported only at startup.
+
 ## 🔍 Troubleshooting
 
 ### Common Issues
@@ -65,6 +72,8 @@ docker run --user $UID -it -e SENZING_ENGINE_CONFIGURATION_JSON brian/sz_simple_
 
 ## Additional items to note
  * Will exit gracefully on CTRL+C or SIGTERM after processing current records in flight
+ * A redo record that fails with bad input or a retry timeout (SENZ0010) is logged and skipped,
+   for both DSRC records and UMF_PROC `REPAIR_ENTITY` messages; it never stops the process
  * If a record takes more than 5min to process (LONG_RECORD), it will alert you with timing information
  * Uses simple `print()` statements with emojis for clear, educational logging
  * Supports "WithInfo" output via the `-i` command line option for educational purposes
